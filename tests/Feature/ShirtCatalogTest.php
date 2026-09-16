@@ -173,6 +173,36 @@ class ShirtCatalogTest extends TestCase
         $this->assertSame('shirt_milestone_submitted', $data['payload']['type']);
     }
 
+    /**
+     * The entry form decides whether the size field is mandatory from the
+     * milestone payload alone, so the size has to ride along — while the rest
+     * of the obsession row (race, religion, birth date) must not.
+     */
+    public function test_milestone_payload_carries_the_shirt_size_and_nothing_sensitive(): void
+    {
+        [$store, $milestone] = $this->makeMilestone();
+
+        DB::table('employee_obsessions')->insert([
+            'employee_id' => $milestone->employee_id,
+            't_shirt' => 'M',
+            'birth_date' => '1990-04-02',
+            'religion' => 'Other',
+            'race' => 'Other',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $row = app(ShirtMilestoneWorkflowService::class)
+            ->indexForStore($store, [])
+            ->items()[0]
+            ->toArray();
+
+        $this->assertSame('M', $row['employee']['obsession']['t_shirt']);
+
+        foreach (['birth_date', 'religion', 'race', 'notes'] as $sensitive) {
+            $this->assertArrayNotHasKey($sensitive, $row['employee']['obsession']);
+        }
+    }
     public function test_a_milestone_cannot_be_touched_through_another_store(): void
     {
         [, $milestone] = $this->makeMilestone();

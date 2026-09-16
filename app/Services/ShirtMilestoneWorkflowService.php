@@ -29,6 +29,10 @@ class ShirtMilestoneWorkflowService
      */
     private const RELATIONS = [
         'employee',
+        // Only the shirt size. The obsession row also holds race,
+        // religion and birth date, which have no business in a shirt
+        // queue payload.
+        'employee.obsession:id,employee_id,t_shirt',
         'store',
         'shirtColor',
         'shirtLogo',
