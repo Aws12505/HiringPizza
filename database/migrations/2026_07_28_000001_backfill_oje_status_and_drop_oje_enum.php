@@ -47,11 +47,20 @@ return new class extends Migration {
         // MySQL implicitly commits on DDL, so this must run outside the
         // transaction above — otherwise Laravel's later explicit commit()
         // fails with "There is no active transaction".
-        DB::statement("ALTER TABLE employee_status_histories MODIFY status ENUM('hired','resigned','terminated','rehired') NOT NULL");
+        //
+        // MODIFY ... ENUM is MySQL-only syntax. SQLite keeps the column as a
+        // plain varchar with no enum constraint to narrow, so there is nothing
+        // to do there — and without this guard the whole migration run dies on
+        // the sqlite test database.
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE employee_status_histories MODIFY status ENUM('hired','resigned','terminated','rehired') NOT NULL");
+        }
     }
 
     public function down(): void
     {
-        DB::statement("ALTER TABLE employee_status_histories MODIFY status ENUM('hired','resigned','terminated','rehired','OJE') NOT NULL");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE employee_status_histories MODIFY status ENUM('hired','resigned','terminated','rehired','OJE') NOT NULL");
+        }
     }
 };
