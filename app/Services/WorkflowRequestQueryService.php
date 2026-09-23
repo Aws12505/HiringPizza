@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\HiringRequest;
-use App\Models\MilestoneGiftRequest;
 use App\Models\SeparationRequest;
 use App\Models\Store;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -21,7 +20,6 @@ class WorkflowRequestQueryService
         $fetchers = [
             'separation' => fn() => $this->fetchSeparationRowsGlobal($storeIds, $filters),
             'hiring' => fn() => $this->fetchHiringRowsGlobal($storeIds, $filters),
-            'milestone_gift' => fn() => $this->fetchMilestoneGiftRowsGlobal($storeIds, $filters),
         ];
 
         return $this->buildGroupedPaginators($fetchers, $filters);
@@ -35,7 +33,6 @@ class WorkflowRequestQueryService
         $fetchers = [
             'separation' => fn() => $this->fetchSeparationRows($store, $filters),
             'hiring' => fn() => $this->fetchHiringRows($store, $filters),
-            'milestone_gift' => fn() => $this->fetchMilestoneGiftRows($store, $filters),
         ];
 
         return $this->buildGroupedPaginators($fetchers, $filters);
@@ -144,43 +141,6 @@ class WorkflowRequestQueryService
         return $query->get()->map(fn(HiringRequest $request) => $this->mapHiringRow($request));
     }
 
-    private function fetchMilestoneGiftRows(Store $store, array $filters): Collection
-    {
-        $query = MilestoneGiftRequest::query()
-            ->with([
-                'user',
-                'employee',
-                'rating.answers.question',
-                'rating.answers.selectedOptions.questionOption',
-                'decision',
-                'finalStatus',
-                'store'
-            ])
-            ->where('store_id', $store->id);
-
-        $query
-            ->when($filters['requested_by_user_id'] ?? null, fn(Builder $q, $v) => $q->where('user_id', $v))
-            ->when($filters['employee_id'] ?? null, fn(Builder $q, $v) => $q->where('employee_id', $v))
-            ->when($filters['created_from'] ?? null, fn(Builder $q, $v) => $q->whereDate('created_at', '>=', $v))
-            ->when($filters['created_to'] ?? null, fn(Builder $q, $v) => $q->whereDate('created_at', '<=', $v))
-            ->when($filters['milestone_gift_stage'] ?? null, fn(Builder $q, $v) => $q->where('stage', $v))
-            ->when($filters['milestone'] ?? null, fn(Builder $q, $v) => $q->where('milestone', $v));
-
-        if (!empty($filters['q'])) {
-            $search = trim((string) $filters['q']);
-
-            $query->where(function (Builder $q) use ($search) {
-                $q->whereHas('employee', function (Builder $e) use ($search) {
-                    $e->where('first_name', 'like', "%{$search}%")
-                        ->orWhere('middle_name', 'like', "%{$search}%")
-                        ->orWhere('last_name', 'like', "%{$search}%")
-                        ->orWhereRaw("CONCAT(first_name, ' ', last_name) like ?", ["%{$search}%"]);
-                });
-            });
-        }
-
-        return $query->get()->map(fn(MilestoneGiftRequest $request) => $this->mapMilestoneGiftRow($request));
-    }
 
     private function fetchSeparationRowsGlobal(array $storeIds, array $filters): Collection
     {
@@ -260,59 +220,7 @@ class WorkflowRequestQueryService
         return $query->get()->map(fn(HiringRequest $request) => $this->mapHiringRow($request));
     }
 
-    private function fetchMilestoneGiftRowsGlobal(array $storeIds, array $filters): Collection
-    {
-        $query = MilestoneGiftRequest::query()
-            ->with([
-                'user',
-                'employee',
-                'rating.answers.question',
-                'rating.answers.selectedOptions.questionOption',
-                'decision',
-                'finalStatus',
-                'store'
-            ])
-            ->when(!empty($storeIds), fn(Builder $q) => $q->whereIn('store_id', $storeIds));
 
-        $query
-            ->when($filters['requested_by_user_id'] ?? null, fn(Builder $q, $v) => $q->where('user_id', $v))
-            ->when($filters['employee_id'] ?? null, fn(Builder $q, $v) => $q->where('employee_id', $v))
-            ->when($filters['created_from'] ?? null, fn(Builder $q, $v) => $q->whereDate('created_at', '>=', $v))
-            ->when($filters['created_to'] ?? null, fn(Builder $q, $v) => $q->whereDate('created_at', '<=', $v))
-            ->when($filters['milestone_gift_stage'] ?? null, fn(Builder $q, $v) => $q->where('stage', $v))
-            ->when($filters['milestone'] ?? null, fn(Builder $q, $v) => $q->where('milestone', $v));
-
-        if (!empty($filters['q'])) {
-            $search = trim((string) $filters['q']);
-
-            $query->where(function (Builder $q) use ($search) {
-                $q->whereHas('employee', function (Builder $e) use ($search) {
-                    $e->where('first_name', 'like', "%{$search}%")
-                        ->orWhere('middle_name', 'like', "%{$search}%")
-                        ->orWhere('last_name', 'like', "%{$search}%")
-                        ->orWhereRaw("CONCAT(first_name, ' ', last_name) like ?", ["%{$search}%"]);
-                });
-            });
-        }
-
-        return $query->get()->map(fn(MilestoneGiftRequest $request) => $this->mapMilestoneGiftRow($request));
-    }
-
-    private function mapMilestoneGiftRow(MilestoneGiftRequest $request): array
-    {
-        return [
-            'id' => $request->id,
-            'request_type' => 'milestone_gift',
-            'store_id' => $request->store_id,
-            'requested_by_user_id' => $request->user_id,
-            'requested_at' => $request->created_at,
-            'workflow_status' => $request->stage->value,
-            'latest_decision' => null,
-            'separation_request' => null,
-            'hiring_request' => null,
-            'milestone_gift_request' => $request,
-        ];
-    }
 
     private function mapSeparationRow(SeparationRequest $request): array
     {
@@ -472,7 +380,7 @@ class WorkflowRequestQueryService
             return array_values(array_unique(array_map('strval', $filters['request_types'])));
         }
 
-        return ['separation', 'hiring', 'milestone_gift'];
+        return ['separation', 'hiring'];
     }
 
     private function resolveWorkflowStatuses(array $filters): array

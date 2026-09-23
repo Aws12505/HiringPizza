@@ -80,6 +80,11 @@ class Employee extends Model
         return $this->hasMany(EmployeePosition::class);
     }
 
+    public function shirtMilestones(): HasMany
+    {
+        return $this->hasMany(EmployeeShirtMilestone::class);
+    }
+
     public function stores(): HasMany
     {
         return $this->hasMany(EmployeeStore::class);
