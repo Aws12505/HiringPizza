@@ -61,6 +61,20 @@ class ShirtMilestoneWorkflowService
         );
     }
 
+    /**
+     * The store manager's queue across several of their stores in one read —
+     * the same shape as indexForStore, just not limited to one store.
+     *
+     * @param array<int> $storeIds
+     */
+    public function indexForStores(array $storeIds, array $filters): LengthAwarePaginator
+    {
+        return $this->applyFilters(
+            EmployeeShirtMilestone::query()->with(self::RELATIONS)->whereIn('store_id', $storeIds),
+            $filters
+        );
+    }
+
     public function indexGlobal(array $filters): LengthAwarePaginator
     {
         $query = EmployeeShirtMilestone::query()->with(self::RELATIONS);

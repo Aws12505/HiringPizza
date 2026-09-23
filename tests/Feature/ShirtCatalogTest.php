@@ -203,6 +203,36 @@ class ShirtCatalogTest extends TestCase
             $this->assertArrayNotHasKey($sensitive, $row['employee']['obsession']);
         }
     }
+    /**
+     * The multi-store read replaces one request per store, so it has to return
+     * exactly the union of those — and nothing from a store not asked for.
+     */
+    public function test_multi_store_queue_returns_only_the_requested_stores(): void
+    {
+        [$storeA, $milestoneA] = $this->makeMilestone();
+
+        $storeB = Store::query()->create(['id' => 2, 'store_number' => '03759-00002']);
+        $storeC = Store::query()->create(['id' => 3, 'store_number' => '03759-00003']);
+
+        $milestoneB = $milestoneA->replicate();
+        $milestoneB->store_id = $storeB->id;
+        $milestoneB->milestone_month = 2;
+        $milestoneB->save();
+
+        $milestoneC = $milestoneA->replicate();
+        $milestoneC->store_id = $storeC->id;
+        $milestoneC->milestone_month = 3;
+        $milestoneC->save();
+
+        $ids = collect(
+            app(ShirtMilestoneWorkflowService::class)
+                ->indexForStores([$storeA->id, $storeB->id], [])
+                ->items()
+        )->pluck('id')->sort()->values()->all();
+
+        $this->assertSame([$milestoneA->id, $milestoneB->id], $ids);
+    }
+
     public function test_a_milestone_cannot_be_touched_through_another_store(): void
     {
         [, $milestone] = $this->makeMilestone();

@@ -58,6 +58,13 @@ Route::prefix('v1')->middleware('auth.token.store')->group(function (): void {
     Route::get('requests', [WorkflowRequestController::class, 'indexGlobal'])
         ->name('api.v1.requests.index');
 
+    // Employee Shirt Milestones — the store manager's queue across several
+    // stores in one call (storeIds[] = store numbers), same as requests above.
+    // Deliberately NOT under shirt-milestones: that name is the fulfilment
+    // side's, which the auth server grants by role, not per store.
+    Route::get('store-shirt-milestones', [ShirtMilestoneController::class, 'indexForStores'])
+        ->name('api.v1.store-shirt-milestones.index');
+
     Route::prefix('stores/{storeId}')
         ->where(['storeId' => '[A-Za-z0-9_-]+'])
         ->group(function (): void {

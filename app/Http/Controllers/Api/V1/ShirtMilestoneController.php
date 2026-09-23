@@ -10,6 +10,7 @@ use App\Http\Requests\Api\V1\ShirtMilestoneEntryRequest;
 use App\Http\Requests\Api\V1\ShirtMilestoneIndexRequest;
 use App\Http\Requests\Api\V1\ShirtMilestoneOrderRequest;
 use App\Http\Requests\Api\V1\ShirtMilestoneStoreRequest;
+use App\Http\Requests\Api\V1\ShirtMilestoneStoresIndexRequest;
 use App\Models\Employee;
 use App\Models\EmployeeShirtMilestone;
 use App\Services\ShirtMilestoneWorkflowService;
@@ -32,6 +33,25 @@ class ShirtMilestoneController extends Controller
 
         return response()->json(
             $this->workflowService->indexForStore($store, $request->validated())
+        );
+    }
+
+    /**
+     * The same queue across several stores in one call — so a manager with
+     * many stores is not one request per store. Mirrors requests' indexGlobal.
+     */
+    public function indexForStores(ShirtMilestoneStoresIndexRequest $request): JsonResponse
+    {
+        $filters = $request->validated();
+
+        $storeIds = collect($filters['storeIds'])
+            ->map(fn (string $num) => $this->workflowService->resolveStoreByNumber($num)->id)
+            ->unique()
+            ->values()
+            ->all();
+
+        return response()->json(
+            $this->workflowService->indexForStores($storeIds, $filters)
         );
     }
 
