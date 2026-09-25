@@ -267,11 +267,12 @@ class ManagerDashboardService
             ->join('stores as s', 's.id', '=', 'es.store_id')
             ->whereIn('s.store_number', $storeNumbers)
             ->whereBetween('em.metric_date', [$overallStart, $overallEnd])
-            ->where('emv.column_id', 23)
+            ->whereIn('emv.column_id', [3, 23])
             ->select([])
             ->selectRaw('s.store_number')
             ->selectRaw('FLOOR(DATEDIFF(em.metric_date, ?) / 7) AS week_index', [$overallStart])
-            ->selectRaw('AVG(emv.value_numeric) AS labor')
+            ->selectRaw('AVG(CASE WHEN emv.column_id = 23 THEN emv.value_numeric END) AS labor')
+            ->selectRaw('COALESCE(SUM(CASE WHEN emv.column_id = 3 THEN emv.value_numeric END), 0) AS total_hours')
             ->groupByRaw('s.store_number, week_index')
             ->get()
             ->groupBy('store_number');
@@ -283,11 +284,14 @@ class ManagerDashboardService
             $entries = [];
             foreach ($weeks as $index => $week) {
                 $entries[] = [
-                    'week_start' => $week['week_start'],
-                    'week_end'   => $week['week_end'],
-                    'labor'      => isset($storeRows[$index]) && $storeRows[$index]->labor !== null
+                    'week_start'  => $week['week_start'],
+                    'week_end'    => $week['week_end'],
+                    'labor'       => isset($storeRows[$index]) && $storeRows[$index]->labor !== null
                         ? round((float) $storeRows[$index]->labor * 100, 2)
                         : null,
+                    'total_hours' => isset($storeRows[$index])
+                        ? round((float) $storeRows[$index]->total_hours, 2)
+                        : 0,
                 ];
             }
 
@@ -468,10 +472,11 @@ class ManagerDashboardService
             ->join('stores as s', 's.id', '=', 'es.store_id')
             ->where('s.store_number', $store)
             ->whereBetween('em.metric_date', [$overallStart, $overallEnd])
-            ->where('emv.column_id', 23)
+            ->whereIn('emv.column_id', [3, 23])
             ->select([])
             ->selectRaw('FLOOR(DATEDIFF(em.metric_date, ?) / 7) AS week_index', [$overallStart])
-            ->selectRaw('AVG(emv.value_numeric) AS labor')
+            ->selectRaw('AVG(CASE WHEN emv.column_id = 23 THEN emv.value_numeric END) AS labor')
+            ->selectRaw('COALESCE(SUM(CASE WHEN emv.column_id = 3 THEN emv.value_numeric END), 0) AS total_hours')
             ->groupByRaw('week_index')
             ->get()
             ->keyBy('week_index');
@@ -479,11 +484,14 @@ class ManagerDashboardService
         $entries = [];
         foreach ($weeks as $index => $week) {
             $entries[] = [
-                'week_start' => $week['week_start'],
-                'week_end'   => $week['week_end'],
-                'labor'      => isset($rows[$index]) && $rows[$index]->labor !== null
+                'week_start'  => $week['week_start'],
+                'week_end'    => $week['week_end'],
+                'labor'       => isset($rows[$index]) && $rows[$index]->labor !== null
                     ? round((float) $rows[$index]->labor * 100, 2)
                     : null,
+                'total_hours' => isset($rows[$index])
+                    ? round((float) $rows[$index]->total_hours, 2)
+                    : 0,
             ];
         }
 
@@ -539,11 +547,34 @@ class ManagerDashboardService
                             'employee_metric_values.value_numeric',
                         ]);
                 },
+                'currentWeekMetrics' => function ($q) use ($weekStart, $weekEnd) {
+                    $q->whereBetween('metric_date', [
+                        $weekStart->toDateString(),
+                        $weekEnd->toDateString(),
+                    ])
+                        ->join('employee_metric_values', function ($join) {
+                            $join->on('employee_metric_values.employee_metric_id', '=', 'employee_metrics.id')
+                                ->whereIn('employee_metric_values.column_id', [2, 3, 10, 31]);
+                        })
+                        ->join('employee_metric_columns', function ($join) {
+                            $join->on('employee_metric_columns.id', '=', 'employee_metric_values.column_id');
+                        })
+                        ->select([
+                            'employee_metrics.id',
+                            'employee_metrics.employee_id',
+                            'employee_metrics.metric_date',
+                            'employee_metric_columns.label as column_label',
+                            'employee_metric_values.value',
+                            'employee_metric_values.value_numeric',
+                        ]);
+                },
             ])
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->get()
-            ->filter(fn(Employee $employee) => $this->isActiveEmployee($employee) || $employee->metrics->isNotEmpty())
+            ->filter(fn(Employee $employee) => $this->isActiveEmployee($employee)
+                || $employee->metrics->isNotEmpty()
+                || $employee->currentWeekMetrics->isNotEmpty())
             ->values();
 
         return [
@@ -551,6 +582,8 @@ class ManagerDashboardService
             'date' => $day->toDateString(),
             'week_start' => $weekStart->toDateString(),
             'week_end' => $weekEnd->toDateString(),
+            'previous_week_start' => $weekStart->subWeek()->toDateString(),
+            'previous_week_end' => $weekEnd->subWeek()->toDateString(),
             'employees' => $employees->map(fn(Employee $emp) => $this->mapEmployee($emp, $day))->values()->all(),
         ];
     }
@@ -559,7 +592,8 @@ class ManagerDashboardService
     {
         $latestPosition = $employee->positions->first();
         $latestPay = $employee->payHistories->first();
-        $metricEntry = $this->resolveMetric($employee);
+        $metricEntry = $this->resolveMetric($employee->metrics);
+        $currentMetricEntry = $this->resolveMetric($employee->currentWeekMetrics);
 
         return [
             'employee_id' => $employee->id,
@@ -574,6 +608,7 @@ class ManagerDashboardService
             'base_pay' => $latestPay ? number_format((float) $latestPay->base_pay, 2, '.', '') : null,
             'performance_pay' => $latestPay ? number_format((float) $latestPay->performance_pay, 2, '.', '') : null,
             'metrics' => $metricEntry,
+            'current_metrics' => $currentMetricEntry,
         ];
     }
 
@@ -618,9 +653,9 @@ class ManagerDashboardService
         ];
     }
 
-    private function resolveMetric(Employee $employee): array
+    private function resolveMetric(Collection $metrics): array
     {
-        return $employee->metrics
+        return $metrics
             ->sortByDesc('metric_date')
             ->map(fn($metric) => [
                 'metric_date' => $metric->metric_date,

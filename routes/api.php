@@ -2,12 +2,13 @@
 
 use App\Http\Controllers\Api\V1\EmployeeWorkflowController;
 use App\Http\Controllers\Api\V1\EmployeeMetricController;
+use App\Http\Controllers\Api\V1\LaborController;
 use App\Http\Controllers\Api\V1\ReferenceCatalogController;
 use App\Http\Controllers\Api\V1\SeparationRequestController;
 use App\Http\Controllers\Api\V1\HiringRequestController;
 use App\Http\Controllers\Api\V1\ManagerDashboardController;
-use App\Http\Controllers\Api\V1\MilestoneGiftQuestionController;
-use App\Http\Controllers\Api\V1\MilestoneGiftRequestController;
+use App\Http\Controllers\Api\V1\ShirtCatalogController;
+use App\Http\Controllers\Api\V1\ShirtMilestoneController;
 use App\Http\Controllers\Api\V1\WorkflowRequestController;
 use Illuminate\Support\Facades\Route;
 
@@ -51,33 +52,18 @@ Route::prefix('v1')->middleware('auth.token.store')->group(function (): void {
         ->where(['date' => '[0-9]{4}-[0-9]{2}-[0-9]{2}'])
         ->name('api.v1.reports.show');
 
-    // Global milestone gift question management (no store prefix)
-    Route::get('milestone-gift-questions', [MilestoneGiftQuestionController::class, 'indexAll'])
-        ->name('api.v1.milestone-gift-questions.index');
-
-    Route::post('milestone-gift-questions', [MilestoneGiftQuestionController::class, 'store'])
-        ->name('api.v1.milestone-gift-questions.store');
-
-    Route::put('milestone-gift-questions/{question}', [MilestoneGiftQuestionController::class, 'update'])
-        ->name('api.v1.milestone-gift-questions.update');
-
-    Route::delete('milestone-gift-questions/{question}', [MilestoneGiftQuestionController::class, 'destroy'])
-        ->name('api.v1.milestone-gift-questions.destroy');
-
-    Route::post('milestone-gift-questions/{question}/options', [MilestoneGiftQuestionController::class, 'storeOption'])
-        ->name('api.v1.milestone-gift-questions.options.store');
-
-    Route::put('milestone-gift-questions/{question}/options/{option}', [MilestoneGiftQuestionController::class, 'updateOption'])
-        ->name('api.v1.milestone-gift-questions.options.update');
-
-    Route::delete('milestone-gift-questions/{question}/options/{option}', [MilestoneGiftQuestionController::class, 'destroyOption'])
-        ->name('api.v1.milestone-gift-questions.options.destroy');
-
     Route::get('employees', [EmployeeWorkflowController::class, 'indexGlobal'])
         ->name('api.v1.employees.index');
 
     Route::get('requests', [WorkflowRequestController::class, 'indexGlobal'])
         ->name('api.v1.requests.index');
+
+    // Employee Shirt Milestones — the store manager's queue across several
+    // stores in one call (storeIds[] = store numbers), same as requests above.
+    // Deliberately NOT under shirt-milestones: that name is the fulfilment
+    // side's, which the auth server grants by role, not per store.
+    Route::get('store-shirt-milestones', [ShirtMilestoneController::class, 'indexForStores'])
+        ->name('api.v1.store-shirt-milestones.index');
 
     Route::prefix('stores/{storeId}')
         ->where(['storeId' => '[A-Za-z0-9_-]+'])
@@ -90,6 +76,11 @@ Route::prefix('v1')->middleware('auth.token.store')->group(function (): void {
 
             Route::get('employees/{employee}', [EmployeeWorkflowController::class, 'show'])
                 ->name('api.v1.stores.employees.show');
+
+            // Full employee info + operational history (all metric/column values
+            // ever recorded for the employee). Pass ?paginated=1 to paginate.
+            Route::get('employees/{employee}/operational', [EmployeeWorkflowController::class, 'operational'])
+                ->name('api.v1.stores.employees.operational');
 
             Route::post('employees/{employee}', [EmployeeWorkflowController::class, 'update'])
                 ->name('api.v1.stores.employees.update');
@@ -113,6 +104,13 @@ Route::prefix('v1')->middleware('auth.token.store')->group(function (): void {
                 ->where(['date' => '[0-9]{4}-[0-9]{2}-[0-9]{2}'])
                 ->name('api.v1.stores.manager-dashboard.show');
 
+            // Labor report: store-wide headcount/tenure/turnover/labor snapshot for the
+            // business week containing {date}, plus trailing-week trend context.
+            // Override the trend window with ?trend_weeks= (default 6, max 12).
+            Route::get('labor/{date}', [LaborController::class, 'show'])
+                ->where(['date' => '[0-9]{4}-[0-9]{2}-[0-9]{2}'])
+                ->name('api.v1.stores.labor.show');
+
             // Hiring Request Workflow
             Route::post('hiring-requests', [HiringRequestController::class, 'store'])
                 ->name('api.v1.stores.hiring-requests.store');
@@ -120,21 +118,84 @@ Route::prefix('v1')->middleware('auth.token.store')->group(function (): void {
             Route::post('hiring-requests/{hiringRequest}/decision', [HiringRequestController::class, 'decide'])
                 ->name('api.v1.stores.hiring-requests.decide');
 
-            // Milestone Gift Request Workflow
-            Route::post('milestone-gift-requests', [MilestoneGiftRequestController::class, 'store'])
-                ->name('api.v1.stores.milestone-gift-requests.store');
+            // Employee Shirt Milestones — the store manager's side.
+            // Every completed month of tenure opens one of these; the manager
+            // fills in the shirt form and it moves on to the fulfilment queue.
+            Route::get('shirt-milestones', [ShirtMilestoneController::class, 'index'])
+                ->name('api.v1.stores.shirt-milestones.index');
 
-            Route::post('milestone-gift-requests/{milestoneGiftRequest}/rating', [MilestoneGiftRequestController::class, 'submitRating'])
-                ->name('api.v1.stores.milestone-gift-requests.rating');
+            // Create and fill in one call, for giving someone a shirt without
+            // waiting for a month to come around.
+            Route::post('shirt-milestones', [ShirtMilestoneController::class, 'store'])
+                ->name('api.v1.stores.shirt-milestones.store');
 
-            Route::post('milestone-gift-requests/{milestoneGiftRequest}/gift-decision', [MilestoneGiftRequestController::class, 'recordDecision'])
-                ->name('api.v1.stores.milestone-gift-requests.gift-decision');
+            Route::get('shirt-milestones/{shirtMilestone}', [ShirtMilestoneController::class, 'show'])
+                ->whereNumber('shirtMilestone')
+                ->name('api.v1.stores.shirt-milestones.show');
 
-            Route::post('milestone-gift-requests/{milestoneGiftRequest}/final-status', [MilestoneGiftRequestController::class, 'setFinalStatus'])
-                ->name('api.v1.stores.milestone-gift-requests.final-status');
+            Route::post('shirt-milestones/{shirtMilestone}/entry', [ShirtMilestoneController::class, 'entry'])
+                ->whereNumber('shirtMilestone')
+                ->name('api.v1.stores.shirt-milestones.entry');
 
-            // Milestone Gift Questions — store-scoped listing only (management is global, see above)
-            Route::get('milestone-gift-questions', [MilestoneGiftQuestionController::class, 'index'])
-                ->name('api.v1.stores.milestone-gift-questions.index');
+            // How many shirts this employee has received so far, plus detail.
+            Route::get('employees/{employee}/shirts', [ShirtMilestoneController::class, 'employeeHistory'])
+                ->whereNumber('employee')
+                ->name('api.v1.stores.employees.shirts');
         });
+
+    // Employee Shirt Milestones — the fulfilment side, which works across every
+    // store. Authorization is the auth server's call, same as every other route
+    // here: auth.token.store sends it the route name and method and requires
+    // ext.authorized back.
+    Route::get('shirt-milestones', [ShirtMilestoneController::class, 'indexGlobal'])
+        ->name('api.v1.shirt-milestones.index');
+
+    Route::get('shirt-milestones/{shirtMilestone}', [ShirtMilestoneController::class, 'showGlobal'])
+        ->whereNumber('shirtMilestone')
+        ->name('api.v1.shirt-milestones.show');
+
+    Route::post('shirt-milestones/{shirtMilestone}/order', [ShirtMilestoneController::class, 'order'])
+        ->whereNumber('shirtMilestone')
+        ->name('api.v1.shirt-milestones.order');
+
+    Route::patch('shirt-milestones/{shirtMilestone}/delivery-date', [ShirtMilestoneController::class, 'updateDeliveryDate'])
+        ->whereNumber('shirtMilestone')
+        ->name('api.v1.shirt-milestones.delivery-date');
+
+    Route::post('shirt-milestones/{shirtMilestone}/deliver', [ShirtMilestoneController::class, 'deliver'])
+        ->whereNumber('shirtMilestone')
+        ->name('api.v1.shirt-milestones.deliver');
+
+    Route::post('shirt-milestones/{shirtMilestone}/cancel', [ShirtMilestoneController::class, 'cancel'])
+        ->whereNumber('shirtMilestone')
+        ->name('api.v1.shirt-milestones.cancel');
+
+    // The single catalogue read: colours, logos and templates in one call, for
+    // the entry form and its live preview. Pass ?include_inactive=1 for the
+    // management view, which also needs the deactivated rows.
+    Route::get('shirt-catalog', [ShirtCatalogController::class, 'catalog'])
+        ->name('api.v1.shirt-catalog.index');
+
+    // Catalogue management. DELETE deactivates, never removes — milestones
+    // reference these rows historically.
+    Route::post('shirt-colors', [ShirtCatalogController::class, 'storeColor'])
+        ->name('api.v1.shirt-colors.store');
+    Route::put('shirt-colors/{color}', [ShirtCatalogController::class, 'updateColor'])
+        ->whereNumber('color')->name('api.v1.shirt-colors.update');
+    Route::delete('shirt-colors/{color}', [ShirtCatalogController::class, 'destroyColor'])
+        ->whereNumber('color')->name('api.v1.shirt-colors.destroy');
+
+    Route::post('shirt-logos', [ShirtCatalogController::class, 'storeLogo'])
+        ->name('api.v1.shirt-logos.store');
+    Route::post('shirt-logos/{logo}', [ShirtCatalogController::class, 'updateLogo'])
+        ->whereNumber('logo')->name('api.v1.shirt-logos.update');
+    Route::delete('shirt-logos/{logo}', [ShirtCatalogController::class, 'destroyLogo'])
+        ->whereNumber('logo')->name('api.v1.shirt-logos.destroy');
+
+    Route::post('shirt-templates', [ShirtCatalogController::class, 'storeTemplate'])
+        ->name('api.v1.shirt-templates.store');
+    Route::post('shirt-templates/{template}', [ShirtCatalogController::class, 'updateTemplate'])
+        ->whereNumber('template')->name('api.v1.shirt-templates.update');
+    Route::delete('shirt-templates/{template}', [ShirtCatalogController::class, 'destroyTemplate'])
+        ->whereNumber('template')->name('api.v1.shirt-templates.destroy');
 });

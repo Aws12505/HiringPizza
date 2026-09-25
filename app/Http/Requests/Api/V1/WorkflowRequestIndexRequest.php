@@ -17,13 +17,13 @@ class WorkflowRequestIndexRequest extends FormRequest
         return [
             'q' => ['sometimes', 'string', 'max:120'],
 
-            'request_type' => ['sometimes', Rule::in(['separation', 'hiring', 'milestone_gift'])],
+            'request_type' => ['sometimes', Rule::in(['separation', 'hiring'])],
             'request_types' => ['sometimes', 'array'],
-            'request_types.*' => ['required', Rule::in(['separation', 'hiring', 'milestone_gift'])],
+            'request_types.*' => ['required', Rule::in(['separation', 'hiring'])],
 
-            'workflow_status' => ['sometimes', Rule::in(['pending', 'rejected', 'completed', 'created', 'rating', 'gift_decision', 'final_status', 'closed', 'cancelled'])],
+            'workflow_status' => ['sometimes', Rule::in(['pending', 'rejected', 'completed'])],
             'workflow_statuses' => ['sometimes', 'array'],
-            'workflow_statuses.*' => ['required', Rule::in(['pending', 'rejected', 'completed', 'created', 'rating', 'gift_decision', 'final_status', 'closed', 'cancelled'])],
+            'workflow_statuses.*' => ['required', Rule::in(['pending', 'rejected', 'completed'])],
 
             'decision' => ['sometimes', Rule::in(['rejected', 'completed'])],
             'decision_in' => ['sometimes', 'array'],
@@ -32,9 +32,6 @@ class WorkflowRequestIndexRequest extends FormRequest
             'separation_type' => ['sometimes', Rule::in(['termination', 'resignation'])],
             'shift_type' => ['sometimes', Rule::in(['AM', 'PM', 'OP'])],
             'availability_type' => ['sometimes', Rule::in(['weekday', 'weekend', 'open_availability'])],
-
-            'milestone_gift_stage' => ['sometimes', Rule::in(['created', 'rating', 'gift_decision', 'final_status', 'closed', 'cancelled'])],
-            'milestone' => ['sometimes', Rule::in(['30_days', '90_days', '6_months', '1_year', '2_years', 'other'])],
 
             'employee_id' => ['sometimes', 'integer', 'exists:employees,id'],
             'requested_by_user_id' => ['sometimes', 'integer', 'exists:users,id'],
@@ -52,8 +49,16 @@ class WorkflowRequestIndexRequest extends FormRequest
 
             'sort_by' => ['sometimes', Rule::in(['requested_at', 'id', 'final_working_day', 'desired_start_date', 'latest_decided_at'])],
             'sort_dir' => ['sometimes', Rule::in(['asc', 'desc', 'ASC', 'DESC'])],
+
+            // Fallback pagination applied to any type that doesn't specify its own {type}_page/{type}_per_page below.
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
             'page' => ['sometimes', 'integer', 'min:1'],
+
+            // Each request type is paginated independently, since the frontend renders one tab per type.
+            'separation_page' => ['sometimes', 'integer', 'min:1'],
+            'separation_per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'hiring_page' => ['sometimes', 'integer', 'min:1'],
+            'hiring_per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ];
     }
 }

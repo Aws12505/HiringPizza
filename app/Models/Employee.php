@@ -65,6 +65,11 @@ class Employee extends Model
         return $this->hasMany(EmployeeMetric::class);
     }
 
+    public function currentWeekMetrics(): HasMany
+    {
+        return $this->hasMany(EmployeeMetric::class);
+    }
+
     public function obsession(): HasOne
     {
         return $this->hasOne(EmployeeObsession::class);
@@ -73,6 +78,11 @@ class Employee extends Model
     public function positions(): HasMany
     {
         return $this->hasMany(EmployeePosition::class);
+    }
+
+    public function shirtMilestones(): HasMany
+    {
+        return $this->hasMany(EmployeeShirtMilestone::class);
     }
 
     public function stores(): HasMany
